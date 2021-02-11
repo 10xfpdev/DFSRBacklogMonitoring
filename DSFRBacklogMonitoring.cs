@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
+using System.Net;
 using System.Runtime.InteropServices;
 using System.ServiceProcess;
 using System.Text;
@@ -19,12 +21,21 @@ namespace DFSRBacklogMonitoring
         private string rfname;
         private string sendmember;
         private string recmember;
-
+        private string metricsurl;
+        private string eventsurl;
+        private string thishost;
         public DSFRBacklogMonitoring(string[] args)
         {
             InitializeComponent();
             string eventSourceName = "MySource";
             string logName = "MyNewLog";
+
+            /*
+             * var data = new Dictionary<string, string>();
+             * foreach (var row in File.ReadAllLines(PATH_TO_FILE))
+             *      data.Add(row.Split('=')[0], string.Join("=",row.Split('=').Skip(1).ToArray()));
+             * Console.WriteLine(data["ServerName"]); 
+             */
 
             if (args.Length > 0)
             {
@@ -50,6 +61,12 @@ namespace DFSRBacklogMonitoring
             this.rfname = "testdfs";
             this.sendmember = "win2016dfs2";
             this.recmember = Environment.MachineName;
+            string server = "http://localhost:9999";
+            string metricsendpoint = "/api/v1/metrics";
+            this.metricsurl = server + metricsendpoint;
+            string eventsendpoint = "/api/v1/events";
+            this.eventsurl = server + eventsendpoint;
+            this.thishost = Environment.MachineName;
 
         }
 
@@ -63,7 +80,7 @@ namespace DFSRBacklogMonitoring
             eventLog1.WriteEntry("In OnStart.", EventLogEntryType.Information, eventId);
             // Set up a timer that triggers every minute.
             Timer timer = new Timer();
-            timer.Interval = 180000; // 180 seconds
+            timer.Interval = 120000; // 300 seconds
             timer.Elapsed += new ElapsedEventHandler(OnTimer);
             timer.Start();
             // Update the service state to Running.
@@ -76,18 +93,85 @@ namespace DFSRBacklogMonitoring
             // TODO: Insert monitoring activities here.
             eventId += 1;
             eventLog1.WriteEntry("Monitoring the System", EventLogEntryType.Information, eventId);
+           
+            string output = "";
+            int backlog = 0;
+            bool error = false;
+
             Process p; 
             p = new Process();
-            p.StartInfo.FileName = @"c:\Windows\system32\dfsrdiag.exe";
-            p.StartInfo.Arguments = "backlog /RGName:" + this.rgname + " /RFName:" + this.rfname + " /ReceivingMember:" + this.recmember + " /SendingMember:" + this.sendmember;
-            p.StartInfo.UseShellExecute = false;
-            p.StartInfo.RedirectStandardOutput = true;
-            p.StartInfo.WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden;
-            p.StartInfo.CreateNoWindow = true;
-            p.Start();
-            p.WaitForExit();
-            string output = p.StandardOutput.ReadToEnd();
-            eventLog1.WriteEntry(output, EventLogEntryType.Information, eventId);
+            try
+            {
+                p.StartInfo.FileName = @"c:\Windows\system32\dfsrdiag.exe";
+                p.StartInfo.Arguments = "backlog /RGName:" + this.rgname + " /RFName:" + this.rfname + " /ReceivingMember:" + this.recmember + " /SendingMember:" + this.sendmember;
+                p.StartInfo.UseShellExecute = false;
+                p.StartInfo.RedirectStandardOutput = true;
+                p.StartInfo.WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden;
+                p.StartInfo.CreateNoWindow = true;
+                p.Start();
+                p.WaitForExit(200000);
+                output = p.StandardOutput.ReadToEnd();
+                eventLog1.WriteEntry(output, EventLogEntryType.Information, eventId);
+            }
+            catch (Exception ex)
+            {
+                eventLog1.WriteEntry(ex.ToString(), EventLogEntryType.Error, eventId);
+            }
+
+            if (output != "")
+            {
+                string[] outputlst = output.Split('\n');
+                foreach (string line in outputlst)
+                {
+                    if (line.Contains("Backlog File Count"))
+                    {
+                        backlog = Convert.ToInt32(((line.Split(':'))[1]).Trim());
+                        break;
+                    }
+                    if (line.Contains("No Backlog"))
+                    {
+                        break;
+                    }
+                    else
+                    {
+                        error = true;
+                    }
+                }
+            }
+            else
+            {
+                error = true;
+            }
+
+            if (error == true)
+            {
+                // Send the backlog count to appdynamics
+
+                string json = "[  {    \"metricName\": \"Custom Metrics|DFSR Backlog|" + rfname + "|" + thishost + "\",  \"aggregatorType\": \"OBSERVATION\", \"value\":" + backlog + "} ]";
+                eventLog1.WriteEntry(json, EventLogEntryType.Information, eventId);
+
+                try
+                {
+                    var httpWebRequest = (HttpWebRequest)WebRequest.Create(this.metricsurl);
+                httpWebRequest.ContentType = "application/json";
+                httpWebRequest.Method = "POST";
+
+                    using (var streamWriter = new StreamWriter(httpWebRequest.GetRequestStream()))
+                    {
+                        streamWriter.Write(json);
+                    }
+
+                    var httpResponse = (HttpWebResponse)httpWebRequest.GetResponse();
+                    using (var streamReader = new StreamReader(httpResponse.GetResponseStream()))
+                    {
+                        var result = streamReader.ReadToEnd();
+                        eventLog1.WriteEntry(result, EventLogEntryType.Information, eventId);
+                    }
+                } catch (Exception ex)
+                {
+                    eventLog1.WriteEntry(ex.ToString(), EventLogEntryType.Error, eventId);
+                }
+            }
         }
 
         protected override void OnStop()

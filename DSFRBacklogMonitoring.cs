@@ -60,7 +60,7 @@ namespace DFSRBacklogMonitoring
             serviceStatus.dwCurrentState = ServiceState.SERVICE_START_PENDING;
             serviceStatus.dwWaitHint = 100000;
             SetServiceStatus(this.ServiceHandle, ref serviceStatus);
-            eventLog1.WriteEntry("In OnStart.");
+            eventLog1.WriteEntry("In OnStart.", EventLogEntryType.Information, eventId);
             // Set up a timer that triggers every minute.
             Timer timer = new Timer();
             timer.Interval = 180000; // 180 seconds
@@ -74,7 +74,8 @@ namespace DFSRBacklogMonitoring
         private void OnTimer(object sender, ElapsedEventArgs e)
         {
             // TODO: Insert monitoring activities here.
-            eventLog1.WriteEntry("Monitoring the System", EventLogEntryType.Information, eventId++);
+            eventId += 1;
+            eventLog1.WriteEntry("Monitoring the System", EventLogEntryType.Information, eventId);
             Process p; 
             p = new Process();
             p.StartInfo.FileName = @"c:\Windows\system32\dfsrdiag.exe";
@@ -86,7 +87,7 @@ namespace DFSRBacklogMonitoring
             p.Start();
             p.WaitForExit();
             string output = p.StandardOutput.ReadToEnd();
-            eventLog1.WriteEntry(output);
+            eventLog1.WriteEntry(output, EventLogEntryType.Information, eventId);
         }
 
         protected override void OnStop()
@@ -96,14 +97,14 @@ namespace DFSRBacklogMonitoring
             serviceStatus.dwCurrentState = ServiceState.SERVICE_STOP_PENDING;
             serviceStatus.dwWaitHint = 100000;
             SetServiceStatus(this.ServiceHandle, ref serviceStatus);
-            eventLog1.WriteEntry("In OnStop.");
+            eventLog1.WriteEntry("In OnStop.", EventLogEntryType.Information, eventId);
             // Update the service state to Stopped.
             serviceStatus.dwCurrentState = ServiceState.SERVICE_STOPPED;
             SetServiceStatus(this.ServiceHandle, ref serviceStatus);
         }
         protected override void OnContinue()
         {
-            eventLog1.WriteEntry("In OnContinue.");
+            eventLog1.WriteEntry("In OnContinue.", EventLogEntryType.Information, eventId);
         }
         public enum ServiceState
         {

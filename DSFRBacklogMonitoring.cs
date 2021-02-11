@@ -15,6 +15,10 @@ namespace DFSRBacklogMonitoring
     {
         private EventLog eventLog1;
         private int eventId = 1;
+        private string rgname;
+        private string rfname;
+        private string sendmember;
+        private string recmember;
 
         public DSFRBacklogMonitoring(string[] args)
         {
@@ -41,6 +45,12 @@ namespace DFSRBacklogMonitoring
 
             eventLog1.Source = eventSourceName;
             eventLog1.Log = logName;
+
+            this.rgname = "RG_TEST";
+            this.rfname = "testdfs";
+            this.sendmember = "win2016dfs2";
+            this.recmember = Environment.MachineName;
+
         }
 
         protected override void OnStart(string[] args)
@@ -53,8 +63,8 @@ namespace DFSRBacklogMonitoring
             eventLog1.WriteEntry("In OnStart.");
             // Set up a timer that triggers every minute.
             Timer timer = new Timer();
-            timer.Interval = 60000; // 60 seconds
-            timer.Elapsed += new ElapsedEventHandler(this.OnTimer);
+            timer.Interval = 180000; // 180 seconds
+            timer.Elapsed += new ElapsedEventHandler(OnTimer);
             timer.Start();
             // Update the service state to Running.
             serviceStatus.dwCurrentState = ServiceState.SERVICE_RUNNING;
@@ -65,6 +75,18 @@ namespace DFSRBacklogMonitoring
         {
             // TODO: Insert monitoring activities here.
             eventLog1.WriteEntry("Monitoring the System", EventLogEntryType.Information, eventId++);
+            Process p; 
+            p = new Process();
+            p.StartInfo.FileName = @"c:\Windows\system32\dfsrdiag.exe";
+            p.StartInfo.Arguments = "backlog /RGName:" + this.rgname + " /RFName:" + this.rfname + " /ReceivingMember:" + this.recmember + " /SendingMember:" + this.sendmember;
+            p.StartInfo.UseShellExecute = false;
+            p.StartInfo.RedirectStandardOutput = true;
+            p.StartInfo.WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden;
+            p.StartInfo.CreateNoWindow = true;
+            p.Start();
+            p.WaitForExit();
+            string output = p.StandardOutput.ReadToEnd();
+            eventLog1.WriteEntry(output);
         }
 
         protected override void OnStop()

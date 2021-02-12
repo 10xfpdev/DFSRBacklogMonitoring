@@ -29,45 +29,56 @@ namespace DFSRBacklogMonitoring
         private string metricsendpoint;
         private string eventsendpoint;
         private string configFile;
+        private int checkInterval;
+        private int pTimeOut;
         public DSFRBacklogMonitoring(string[] args)
         {
             InitializeComponent();
-            /*
-             * var data = new Dictionary<string, string>();
-             * foreach (var row in File.ReadAllLines(PATH_TO_FILE))
-             *      data.Add(row.Split('=')[0], string.Join("=",row.Split('=').Skip(1).ToArray()));
-             * Console.WriteLine(data["ServerName"]); 
-             */
 
-            this.configFile = AppDomain.CurrentDomain.BaseDirectory + "\\config.properties";
+            this.configFile = AppDomain.CurrentDomain.BaseDirectory + "config.properties";
             var data = new Dictionary<string, string>();
-            foreach (var row in File.ReadAllLines(configFile))
+
+            try
             {
-                    data.Add(row.Split('=')[0], row.Split('=')[1]);
-            }
-            string eventSourceName = data["eventlogsource"];
-            string logName = data["eventloglogname"];
+                foreach (var row in File.ReadAllLines(configFile))
+                {
+                    data.Add((row.Split('=')[0]).Trim(), (row.Split('=')[1]).Trim());
+                }
+                string eventSourceName = data["eventlogsource"];
+                string logName = data["eventloglogname"];
 
-            if (!EventLog.SourceExists(eventSourceName))
+                if (!EventLog.SourceExists(eventSourceName))
+                {
+                    EventLog.CreateEventSource(eventSourceName, logName);
+                }
+                this.eventLog1 = new EventLog();
+                this.eventLog1.Source = eventSourceName;
+                this.eventLog1.Log = logName;
+
+                this.rgname = data["rgname"];
+                this.rfname = data["rfname"];
+                this.sendmember = data["sendmember"];
+                this.thishost = Environment.MachineName;
+                this.recmember = this.thishost;
+                this.appdMachAgent = data["appdagent"];
+                this.metricsendpoint = data["metricsendpoint"];
+                this.metricsurl = appdMachAgent + metricsendpoint;
+                this.eventsendpoint = data["eventsendpoint"];
+                this.eventsurl = appdMachAgent + eventsendpoint;
+                this.checkInterval = Convert.ToInt32(data["checkinterval"]);
+                this.pTimeOut = Convert.ToInt32(data["processtimeout"]);
+            }catch (Exception ex)
             {
-                EventLog.CreateEventSource(eventSourceName, logName);
+                using (StreamWriter writer = new StreamWriter(AppDomain.CurrentDomain.BaseDirectory + "error.log"))
+                {
+                    writer.WriteLine(DateTime.UtcNow.ToString() + ";;" + this.thishost);
+                    writer.WriteLine("Make sure " + this.configFile + " exists.\nIt must contain values for\nrgname =\nrfname =\nsendmember =\nappdagent =\nmetricsendpoint =\neventsendpoint =\ncheckinterval =\nprocesstimeout =\n");
+                    writer.WriteLine("Pre Requisites:\n.NET Framework 4.0\nUser must be added to Distributed COM Users local group\nUser must have wmi permissions for Microsoft Dfs (wmimgmt.msc)\nUser must have delegate permissions for the DFS replication group\n");
+                    writer.WriteLine(ex.ToString());
+
+                }
+                throw new Exception("See error.log", ex);
             }
-            this.eventLog1 = new EventLog();
-            this.eventLog1.Source = eventSourceName;
-            this.eventLog1.Log = logName;
-
-            this.rgname = data["rgname"];
-            this.rfname = data["rfname"];
-            this.sendmember = data["sendmember"];
-            this.thishost = Environment.MachineName;
-            this.recmember = this.thishost;
-            this.appdMachAgent = data["appdagent"];
-            this.metricsendpoint = data["metricsendpoint"];
-            this.metricsurl = appdMachAgent + metricsendpoint;
-            this.eventsendpoint = data["eventsendpoint"];
-            this.eventsurl = appdMachAgent + eventsendpoint;
-
-
         }
 
         protected override void OnStart(string[] args)
@@ -80,7 +91,7 @@ namespace DFSRBacklogMonitoring
             eventLog1.WriteEntry("In OnStart.", EventLogEntryType.Information, eventId);
             // Set up a timer that triggers every minute.
             Timer timer = new Timer();
-            timer.Interval = 300000; // 300 seconds
+            timer.Interval = this.checkInterval;
             timer.Elapsed += new ElapsedEventHandler(OnTimer);
             timer.Start();
             // Update the service state to Running.
@@ -108,7 +119,7 @@ namespace DFSRBacklogMonitoring
                 p.StartInfo.WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden;
                 p.StartInfo.CreateNoWindow = true;
                 p.Start();
-                p.WaitForExit(250000);
+                p.WaitForExit(this.pTimeOut);
                 output = p.StandardOutput.ReadToEnd();
             }
             catch (Exception ex)

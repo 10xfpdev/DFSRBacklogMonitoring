@@ -80,7 +80,7 @@ namespace DFSRBacklogMonitoring
             eventLog1.WriteEntry("In OnStart.", EventLogEntryType.Information, eventId);
             // Set up a timer that triggers every minute.
             Timer timer = new Timer();
-            timer.Interval = 120000; // 300 seconds
+            timer.Interval = 300000; // 300 seconds
             timer.Elapsed += new ElapsedEventHandler(OnTimer);
             timer.Start();
             // Update the service state to Running.
@@ -108,7 +108,7 @@ namespace DFSRBacklogMonitoring
                 p.StartInfo.WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden;
                 p.StartInfo.CreateNoWindow = true;
                 p.Start();
-                p.WaitForExit(200000);
+                p.WaitForExit(250000);
                 output = p.StandardOutput.ReadToEnd();
             }
             catch (Exception ex)
@@ -126,16 +126,17 @@ namespace DFSRBacklogMonitoring
                     if (line.Contains("Backlog File Count"))
                     {
                         backlog = Convert.ToInt32(((line.Split(':'))[1]).Trim());
+                        error = false;
                         break;
                     }
                     if (line.Contains("No Backlog"))
                     {
+                        error = false;
                         break;
                     }
                     else
                     {
                         error = true;
-                        eventLog1.WriteEntry(output, EventLogEntryType.Error, eventId);
                     }
                 }
             }
@@ -153,6 +154,7 @@ namespace DFSRBacklogMonitoring
             }
             else
             {
+                eventLog1.WriteEntry(output, EventLogEntryType.Error, eventId);
                 // Send the error to appdynamics
                 json = "[  { \"eventSeverity\": \"ERROR\", \"type\": \"DFS_Replication\", \"summaryMessage\": \"" + output + "\", \"properties\": { \"Server\": {" + "\"" + thishost + "\" }, \"RGroup\": { \"" + rgname + "\" }, \"Folder\": { \"" + rfname + "\" } }, \"details\": { \"Error\": \"" + output + "\", \"Server\": \"" + thishost + "\", \"RGroup\": \"" + rgname + "\", \"Folder\": \"" + rfname + "\"}  }]";
                 SendToAppD(json, this.eventsurl);

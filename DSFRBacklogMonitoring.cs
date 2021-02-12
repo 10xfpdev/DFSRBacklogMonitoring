@@ -17,7 +17,7 @@ namespace DFSRBacklogMonitoring
     public partial class DSFRBacklogMonitoring : ServiceBase
     {
         private EventLog eventLog1;
-        private int eventId = 1;
+        private int eventId = 100;
         private string rgname;
         private string rfname;
         private string sendmember;
@@ -72,7 +72,7 @@ namespace DFSRBacklogMonitoring
                 using (StreamWriter writer = new StreamWriter(AppDomain.CurrentDomain.BaseDirectory + "error.log"))
                 {
                     writer.WriteLine(DateTime.UtcNow.ToString() + ";;" + this.thishost);
-                    writer.WriteLine("Make sure " + this.configFile + " exists.\nIt must contain values for\nrgname =\nrfname =\nsendmember =\nappdagent =\nmetricsendpoint =\neventsendpoint =\ncheckinterval =\nprocesstimeout =\n");
+                    writer.WriteLine("Make sure " + this.configFile + " exists.\nIt must contain values for\nrgname =\nrfname =\nsendmember =\nappdagent =\nmetricsendpoint =\neventsendpoint =\ncheckinterval =\nprocesstimeout =\nNote that checkinterval and processtimeout are in miliseconds");
                     writer.WriteLine("Pre Requisites:\n.NET Framework 4.0\nUser must be added to Distributed COM Users local group\nUser must have wmi permissions for Microsoft Dfs (wmimgmt.msc)\nUser must have delegate permissions for the DFS replication group\n");
                     writer.WriteLine(ex.ToString());
 
@@ -88,7 +88,7 @@ namespace DFSRBacklogMonitoring
             serviceStatus.dwCurrentState = ServiceState.SERVICE_START_PENDING;
             serviceStatus.dwWaitHint = 100000;
             SetServiceStatus(this.ServiceHandle, ref serviceStatus);
-            eventLog1.WriteEntry("In OnStart.", EventLogEntryType.Information, eventId);
+            eventLog1.WriteEntry("In OnStart.", EventLogEntryType.Information, 0);
             // Set up a timer that triggers every minute.
             Timer timer = new Timer();
             timer.Interval = this.checkInterval;
@@ -101,7 +101,6 @@ namespace DFSRBacklogMonitoring
 
         private void OnTimer(object sender, ElapsedEventArgs e)
         {
-            eventId += 1;
             eventLog1.WriteEntry("StartingMonitoring the System", EventLogEntryType.Information, eventId);
 
             string output = "";
@@ -207,14 +206,14 @@ namespace DFSRBacklogMonitoring
             serviceStatus.dwCurrentState = ServiceState.SERVICE_STOP_PENDING;
             serviceStatus.dwWaitHint = 100000;
             SetServiceStatus(this.ServiceHandle, ref serviceStatus);
-            eventLog1.WriteEntry("In OnStop.", EventLogEntryType.Information, eventId);
+            eventLog1.WriteEntry("In OnStop.", EventLogEntryType.Information, 300);
             // Update the service state to Stopped.
             serviceStatus.dwCurrentState = ServiceState.SERVICE_STOPPED;
             SetServiceStatus(this.ServiceHandle, ref serviceStatus);
         }
         protected override void OnContinue()
         {
-            eventLog1.WriteEntry("In OnContinue.", EventLogEntryType.Information, eventId);
+            eventLog1.WriteEntry("In OnContinue.", EventLogEntryType.Information, 200);
         }
         public enum ServiceState
         {

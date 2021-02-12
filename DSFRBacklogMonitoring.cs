@@ -10,6 +10,7 @@ using System.Runtime.InteropServices;
 using System.ServiceProcess;
 using System.Text;
 using System.Timers;
+using static System.Net.Mime.MediaTypeNames;
 
 namespace DFSRBacklogMonitoring
 {
@@ -24,12 +25,13 @@ namespace DFSRBacklogMonitoring
         private string metricsurl;
         private string eventsurl;
         private string thishost;
+        private string appdMachAgent;
+        private string metricsendpoint;
+        private string eventsendpoint;
+        private string configFile;
         public DSFRBacklogMonitoring(string[] args)
         {
             InitializeComponent();
-            string eventSourceName = "MySource";
-            string logName = "MyNewLog";
-
             /*
              * var data = new Dictionary<string, string>();
              * foreach (var row in File.ReadAllLines(PATH_TO_FILE))
@@ -37,36 +39,34 @@ namespace DFSRBacklogMonitoring
              * Console.WriteLine(data["ServerName"]); 
              */
 
-            if (args.Length > 0)
+            this.configFile = AppDomain.CurrentDomain.BaseDirectory + "\\config.properties";
+            var data = new Dictionary<string, string>();
+            foreach (var row in File.ReadAllLines(configFile))
             {
-                eventSourceName = args[0];
+                    data.Add(row.Split('=')[0], row.Split('=')[1]);
             }
-
-            if (args.Length > 1)
-            {
-                logName = args[1];
-            }
-
-            eventLog1 = new EventLog();
+            string eventSourceName = data["eventlogsource"];
+            string logName = data["eventloglogname"];
 
             if (!EventLog.SourceExists(eventSourceName))
             {
                 EventLog.CreateEventSource(eventSourceName, logName);
             }
+            this.eventLog1 = new EventLog();
+            this.eventLog1.Source = eventSourceName;
+            this.eventLog1.Log = logName;
 
-            eventLog1.Source = eventSourceName;
-            eventLog1.Log = logName;
-
-            this.rgname = "RG_TEST";
-            this.rfname = "testdfs";
-            this.sendmember = "win2016dfs2";
-            this.recmember = Environment.MachineName;
-            string server = "http://localhost:9999";
-            string metricsendpoint = "/api/v1/metrics";
-            this.metricsurl = server + metricsendpoint;
-            string eventsendpoint = "/api/v1/events";
-            this.eventsurl = server + eventsendpoint;
+            this.rgname = data["rgname"];
+            this.rfname = data["rfname"];
+            this.sendmember = data["sendmember"];
             this.thishost = Environment.MachineName;
+            this.recmember = this.thishost;
+            this.appdMachAgent = data["appdagent"];
+            this.metricsendpoint = data["metricsendpoint"];
+            this.metricsurl = appdMachAgent + metricsendpoint;
+            this.eventsendpoint = data["eventsendpoint"];
+            this.eventsurl = appdMachAgent + eventsendpoint;
+
 
         }
 
@@ -90,15 +90,14 @@ namespace DFSRBacklogMonitoring
 
         private void OnTimer(object sender, ElapsedEventArgs e)
         {
-            // TODO: Insert monitoring activities here.
             eventId += 1;
-            eventLog1.WriteEntry("Monitoring the System", EventLogEntryType.Information, eventId);
-           
+            eventLog1.WriteEntry("StartingMonitoring the System", EventLogEntryType.Information, eventId);
+
             string output = "";
             int backlog = 0;
             bool error = false;
-
-            Process p; 
+            string json = "";
+            Process p;
             p = new Process();
             try
             {
@@ -111,11 +110,12 @@ namespace DFSRBacklogMonitoring
                 p.Start();
                 p.WaitForExit(200000);
                 output = p.StandardOutput.ReadToEnd();
-                eventLog1.WriteEntry(output, EventLogEntryType.Information, eventId);
             }
             catch (Exception ex)
             {
                 eventLog1.WriteEntry(ex.ToString(), EventLogEntryType.Error, eventId);
+                json = "[  { \"eventSeverity\": \"ERROR\", \"type\": \"DFS_Replication\", \"summaryMessage\": \"" + ex.ToString() + "\", \"properties\": { \"Server\": {" + "\"" + thishost + "\" }, \"RGroup\": { \"" + rgname + "\" }, \"Folder\": { \"" + rfname + "\" } }, \"details\": { \"Error\": \"" + output + "\", \"Server\": \"" + thishost + "\", \"RGroup\": \"" + rgname + "\", \"Folder\": \"" + rfname + "\"}  }]";
+                SendToAppD(json, this.eventsurl);
             }
 
             if (output != "")
@@ -135,6 +135,7 @@ namespace DFSRBacklogMonitoring
                     else
                     {
                         error = true;
+                        eventLog1.WriteEntry(output, EventLogEntryType.Error, eventId);
                     }
                 }
             }
@@ -143,34 +144,46 @@ namespace DFSRBacklogMonitoring
                 error = true;
             }
 
-            if (error == true)
+            if (!error)
             {
                 // Send the backlog count to appdynamics
-
-                string json = "[  {    \"metricName\": \"Custom Metrics|DFSR Backlog|" + rfname + "|" + thishost + "\",  \"aggregatorType\": \"OBSERVATION\", \"value\":" + backlog + "} ]";
+                json = "[  {    \"metricName\": \"Custom Metrics|DFSR Backlog|" + rfname + "|" + thishost + "\",  \"aggregatorType\": \"OBSERVATION\", \"value\":" + backlog + "} ]";
                 eventLog1.WriteEntry(json, EventLogEntryType.Information, eventId);
+                SendToAppD(json, this.metricsurl);
+            }
+            else
+            {
+                // Send the error to appdynamics
+                json = "[  { \"eventSeverity\": \"ERROR\", \"type\": \"DFS_Replication\", \"summaryMessage\": \"" + output + "\", \"properties\": { \"Server\": {" + "\"" + thishost + "\" }, \"RGroup\": { \"" + rgname + "\" }, \"Folder\": { \"" + rfname + "\" } }, \"details\": { \"Error\": \"" + output + "\", \"Server\": \"" + thishost + "\", \"RGroup\": \"" + rgname + "\", \"Folder\": \"" + rfname + "\"}  }]";
+                SendToAppD(json, this.eventsurl);
 
-                try
-                {
-                    var httpWebRequest = (HttpWebRequest)WebRequest.Create(this.metricsurl);
+            }
+        }
+
+        private void SendToAppD(string json, string url)
+        {
+            eventLog1.WriteEntry("Sending to AppD;;" + json + ";;" + url, EventLogEntryType.Information, eventId);
+            try
+            {
+                var httpWebRequest = (HttpWebRequest)WebRequest.Create(url);
                 httpWebRequest.ContentType = "application/json";
                 httpWebRequest.Method = "POST";
 
-                    using (var streamWriter = new StreamWriter(httpWebRequest.GetRequestStream()))
-                    {
-                        streamWriter.Write(json);
-                    }
-
-                    var httpResponse = (HttpWebResponse)httpWebRequest.GetResponse();
-                    using (var streamReader = new StreamReader(httpResponse.GetResponseStream()))
-                    {
-                        var result = streamReader.ReadToEnd();
-                        eventLog1.WriteEntry(result, EventLogEntryType.Information, eventId);
-                    }
-                } catch (Exception ex)
+                using (var streamWriter = new StreamWriter(httpWebRequest.GetRequestStream()))
                 {
-                    eventLog1.WriteEntry(ex.ToString(), EventLogEntryType.Error, eventId);
+                    streamWriter.Write(json);
                 }
+
+                var httpResponse = (HttpWebResponse)httpWebRequest.GetResponse();
+                using (var streamReader = new StreamReader(httpResponse.GetResponseStream()))
+                {
+                    var result = streamReader.ReadToEnd();
+                    eventLog1.WriteEntry(result, EventLogEntryType.Information, eventId);
+                }
+            }
+            catch (Exception ex)
+            {
+                eventLog1.WriteEntry(ex.ToString() + '\n' + url + '\n' + json, EventLogEntryType.Error, eventId);
             }
         }
 

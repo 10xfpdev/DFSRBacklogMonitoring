@@ -21,8 +21,7 @@ namespace DFSRBacklogMonitoring
         }
         protected override void OnBeforeInstall(IDictionary savedState)
         {
-            string parameter = "DFSRBacklogMonitoring\" \"AppDynamics";
-            Context.Parameters["assemblypath"] = "\"" + Context.Parameters["assemblypath"] + "\" \"" + parameter + "\"";
+            Context.Parameters["assemblypath"] = "\"" + Context.Parameters["assemblypath"] + "\"";
             base.OnBeforeInstall(savedState);
         }
     }

@@ -10,6 +10,7 @@ using System.Net;
 using System.Runtime.InteropServices;
 using System.ServiceProcess;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Timers;
 using static System.Net.Mime.MediaTypeNames;
 
@@ -20,7 +21,6 @@ namespace DFSRBacklogMonitoring
         private EventLog eventLog1;
         private int eventId = 100;
         private string rgname;
-        private string rfname;
         private string[] rfnames;
         private string sendmember;
         private string recmember;
@@ -59,7 +59,6 @@ namespace DFSRBacklogMonitoring
                 this.eventLog1.Log = logName;
 
                 this.rgname = data["rgname"];
-                //this.rfname = data["rfname"];
                 this.rfnames = data["rfnames"].Split(';');
                 this.sendmember = data["sendmember"];
                 this.thishost = Environment.MachineName;
@@ -156,6 +155,7 @@ namespace DFSRBacklogMonitoring
                     {
                         eventLog1.WriteEntry(output, EventLogEntryType.Error, eventId);
                         // Send the error to appdynamics
+                        output = Regex.Replace(output, @"\t|\n|\r", "");
                         json = "[  { \"eventSeverity\": \"ERROR\", \"type\": \"DFS_Replication\", \"summaryMessage\": \"" + output + "\", \"properties\": { \"Server\": {" + "\"" + thishost + "\" }, \"RGroup\": { \"" + rgname + "\" }, \"Folder\": { \"" + folder + "\" } }, \"details\": { \"Error\": \"" + output + "\", \"Server\": \"" + thishost + "\", \"RGroup\": \"" + rgname + "\", \"Folder\": \"" + folder + "\"}  }]";
                         SendToAppD(json, this.eventsurl);
 
@@ -166,7 +166,8 @@ namespace DFSRBacklogMonitoring
             catch (Exception ex)
             {
                 eventLog1.WriteEntry(ex.ToString(), EventLogEntryType.Error, eventId);
-                json = "[  { \"eventSeverity\": \"ERROR\", \"type\": \"DFS_Replication\", \"summaryMessage\": \"" + ex.ToString() + "\", \"properties\": { \"Server\": {" + "\"" + thishost + "\" }, \"RGroup\": { \"" + rgname + "\" }, \"Folder\": { \"" + rfnames + "\" } }, \"details\": { \"Error\": \"" + output + "\", \"Server\": \"" + thishost + "\", \"RGroup\": \"" + rgname + "\", \"Folder\": \"" + rfnames + "\"}  }]";
+                string expt = Regex.Replace(ex.ToString(), @"\t|\n|\r", "");
+                json = "[  { \"eventSeverity\": \"ERROR\", \"type\": \"DFS_Replication\", \"summaryMessage\": \"" + expt + "\", \"properties\": { \"Server\": {" + "\"" + thishost + "\" }, \"RGroup\": { \"" + rgname + "\" }, \"Folder\": { \"" + rfnames + "\" } }, \"details\": { \"Error\": \"" + expt + "\", \"Server\": \"" + thishost + "\", \"RGroup\": \"" + rgname + "\", \"Folder\": \"" + rfnames + "\"}  }]";
                 SendToAppD(json, this.eventsurl);
             }
             finally

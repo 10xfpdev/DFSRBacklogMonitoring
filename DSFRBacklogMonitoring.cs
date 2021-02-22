@@ -156,7 +156,7 @@ namespace DFSRBacklogMonitoring
                         eventLog1.WriteEntry(output, EventLogEntryType.Error, eventId);
                         // Send the error to appdynamics
                         output = Regex.Replace(output, @"\t|\n|\r", "");
-                        json = "[  { \"eventSeverity\": \"ERROR\", \"type\": \"DFS_Replication\", \"summaryMessage\": \"" + output + "\", \"properties\": { \"Server\": {" + "\"" + thishost + "\" }, \"RGroup\": { \"" + rgname + "\" }, \"Folder\": { \"" + folder + "\" } }, \"details\": { \"Error\": \"" + output + "\", \"Server\": \"" + thishost + "\", \"RGroup\": \"" + rgname + "\", \"Folder\": \"" + folder + "\"}  }]";
+                        json = "[  { \"eventSeverity\": \"ERROR\", \"type\": \"DFS_Replication\", \"summaryMessage\": \"" + output + "\", \"properties\": { \"Server\": \"" + thishost + "\", \"RGroup\": \"" + rgname + "\" , \"Folder\": \"" + folder + "\" }, \"details\": { \"Error\": \"" + output + "\", \"Server\": \"" + thishost + "\", \"RGroup\": \"" + rgname + "\", \"Folder\": \"" + folder + "\"}  }]";
                         SendToAppD(json, this.eventsurl);
 
                     }
@@ -167,7 +167,7 @@ namespace DFSRBacklogMonitoring
             {
                 eventLog1.WriteEntry(ex.ToString(), EventLogEntryType.Error, eventId);
                 string expt = Regex.Replace(ex.ToString(), @"\t|\n|\r", "");
-                json = "[  { \"eventSeverity\": \"ERROR\", \"type\": \"DFS_Replication\", \"summaryMessage\": \"" + expt + "\", \"properties\": { \"Server\": {" + "\"" + thishost + "\" }, \"RGroup\": { \"" + rgname + "\" }, \"Folder\": { \"" + rfnames + "\" } }, \"details\": { \"Error\": \"" + expt + "\", \"Server\": \"" + thishost + "\", \"RGroup\": \"" + rgname + "\", \"Folder\": \"" + rfnames + "\"}  }]";
+                json = "[  { \"eventSeverity\": \"ERROR\", \"type\": \"DFS_Replication\", \"summaryMessage\": \"" + expt + "\", \"properties\": { \"Server\": \"" + thishost + "\", \"RGroup\": \"" + rgname + "\" , \"Folder\": \"" + rfnames + "\" }, \"details\": { \"Error\": \"" + expt + "\", \"Server\": \"" + thishost + "\", \"RGroup\": \"" + rgname + "\", \"Folder\": \"" + rfnames + "\"}  }]"; 
                 SendToAppD(json, this.eventsurl);
             }
             finally

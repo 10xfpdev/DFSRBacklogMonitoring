@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
@@ -20,6 +21,7 @@ namespace DFSRBacklogMonitoring
         private int eventId = 100;
         private string rgname;
         private string rfname;
+        private string[] rfnames;
         private string sendmember;
         private string recmember;
         private string metricsurl;
@@ -37,6 +39,7 @@ namespace DFSRBacklogMonitoring
 
             this.configFile = AppDomain.CurrentDomain.BaseDirectory + "config.properties";
             var data = new Dictionary<string, string>();
+            //rfnames = new ArrayList();
 
             try
             {
@@ -56,7 +59,8 @@ namespace DFSRBacklogMonitoring
                 this.eventLog1.Log = logName;
 
                 this.rgname = data["rgname"];
-                this.rfname = data["rfname"];
+                //this.rfname = data["rfname"];
+                this.rfnames = data["rfnames"].Split(';');
                 this.sendmember = data["sendmember"];
                 this.thishost = Environment.MachineName;
                 this.recmember = this.thishost;
@@ -72,7 +76,7 @@ namespace DFSRBacklogMonitoring
                 using (StreamWriter writer = new StreamWriter(AppDomain.CurrentDomain.BaseDirectory + "error.log"))
                 {
                     writer.WriteLine(DateTime.UtcNow.ToString() + ";;" + this.thishost);
-                    writer.WriteLine("Make sure " + this.configFile + " exists.\nIt must contain values for\nrgname =\nrfname =\nsendmember =\nappdagent =\nmetricsendpoint =\neventsendpoint =\ncheckinterval =\nprocesstimeout =\nNote that checkinterval and processtimeout are in miliseconds");
+                    writer.WriteLine("Make sure " + this.configFile + " exists.\nIt must contain values for\nrgname =\nrfnames =\nsendmember =\nappdagent =\nmetricsendpoint =\neventsendpoint =\ncheckinterval =\nprocesstimeout =\nNote that checkinterval and processtimeout are in miliseconds");
                     writer.WriteLine("Pre Requisites:\n.NET Framework 4.0\nUser must be added to Distributed COM Users local group\nUser must have wmi permissions for Microsoft Dfs (wmimgmt.msc)\nUser must have delegate permissions for the DFS replication group\n");
                     writer.WriteLine(ex.ToString());
 
@@ -111,65 +115,84 @@ namespace DFSRBacklogMonitoring
             p = new Process();
             try
             {
-                p.StartInfo.FileName = @"c:\Windows\system32\dfsrdiag.exe";
-                p.StartInfo.Arguments = "backlog /RGName:" + this.rgname + " /RFName:" + this.rfname + " /ReceivingMember:" + this.recmember + " /SendingMember:" + this.sendmember;
-                p.StartInfo.UseShellExecute = false;
-                p.StartInfo.RedirectStandardOutput = true;
-                p.StartInfo.WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden;
-                p.StartInfo.CreateNoWindow = true;
-                p.Start();
-                p.WaitForExit(this.pTimeOut);
-                output = p.StandardOutput.ReadToEnd();
-            }
-            catch (Exception ex)
-            {
-                eventLog1.WriteEntry(ex.ToString(), EventLogEntryType.Error, eventId);
-                json = "[  { \"eventSeverity\": \"ERROR\", \"type\": \"DFS_Replication\", \"summaryMessage\": \"" + ex.ToString() + "\", \"properties\": { \"Server\": {" + "\"" + thishost + "\" }, \"RGroup\": { \"" + rgname + "\" }, \"Folder\": { \"" + rfname + "\" } }, \"details\": { \"Error\": \"" + output + "\", \"Server\": \"" + thishost + "\", \"RGroup\": \"" + rgname + "\", \"Folder\": \"" + rfname + "\"}  }]";
-                SendToAppD(json, this.eventsurl);
-            }
-
-            if (output != "")
-            {
-                string[] outputlst = output.Split('\n');
-                foreach (string line in outputlst)
+                foreach (string folder in rfnames)
                 {
-                    if (line.Contains("Backlog File Count"))
+                    output = RetrieveBacklog(p, folder);
+                    if (output != "")
                     {
-                        backlog = Convert.ToInt32(((line.Split(':'))[1]).Trim());
-                        error = false;
-                        break;
-                    }
-                    if (line.Contains("No Backlog"))
-                    {
-                        error = false;
-                        break;
+                        string[] outputlst = output.Split('\n');
+                        foreach (string line in outputlst)
+                        {
+                            if (line.Contains("Backlog File Count"))
+                            {
+                                backlog = Convert.ToInt32(((line.Split(':'))[1]).Trim());
+                                error = false;
+                                break;
+                            }
+                            if (line.Contains("No Backlog"))
+                            {
+                                error = false;
+                                break;
+                            }
+                            else
+                            {
+                                error = true;
+                            }
+                        }
                     }
                     else
                     {
                         error = true;
                     }
+
+                    if (!error)
+                    {
+                        // Send the backlog count to appdynamics
+                        json = "[  {    \"metricName\": \"Custom Metrics|DFSR Backlog|" + folder + "|" + thishost + "\",  \"aggregatorType\": \"OBSERVATION\", \"value\":" + backlog + "} ]";
+                        eventLog1.WriteEntry(json, EventLogEntryType.Information, eventId);
+                        SendToAppD(json, this.metricsurl);
+                    }
+                    else
+                    {
+                        eventLog1.WriteEntry(output, EventLogEntryType.Error, eventId);
+                        // Send the error to appdynamics
+                        json = "[  { \"eventSeverity\": \"ERROR\", \"type\": \"DFS_Replication\", \"summaryMessage\": \"" + output + "\", \"properties\": { \"Server\": {" + "\"" + thishost + "\" }, \"RGroup\": { \"" + rgname + "\" }, \"Folder\": { \"" + folder + "\" } }, \"details\": { \"Error\": \"" + output + "\", \"Server\": \"" + thishost + "\", \"RGroup\": \"" + rgname + "\", \"Folder\": \"" + folder + "\"}  }]";
+                        SendToAppD(json, this.eventsurl);
+
+                    }
+                }
+
+            }
+            catch (Exception ex)
+            {
+                eventLog1.WriteEntry(ex.ToString(), EventLogEntryType.Error, eventId);
+                json = "[  { \"eventSeverity\": \"ERROR\", \"type\": \"DFS_Replication\", \"summaryMessage\": \"" + ex.ToString() + "\", \"properties\": { \"Server\": {" + "\"" + thishost + "\" }, \"RGroup\": { \"" + rgname + "\" }, \"Folder\": { \"" + rfnames + "\" } }, \"details\": { \"Error\": \"" + output + "\", \"Server\": \"" + thishost + "\", \"RGroup\": \"" + rgname + "\", \"Folder\": \"" + rfnames + "\"}  }]";
+                SendToAppD(json, this.eventsurl);
+            }
+            finally
+            {
+                if (!p.HasExited)
+                {
+                    p.Close();
                 }
             }
-            else
-            {
-                error = true;
-            }
 
-            if (!error)
-            {
-                // Send the backlog count to appdynamics
-                json = "[  {    \"metricName\": \"Custom Metrics|DFSR Backlog|" + rfname + "|" + thishost + "\",  \"aggregatorType\": \"OBSERVATION\", \"value\":" + backlog + "} ]";
-                eventLog1.WriteEntry(json, EventLogEntryType.Information, eventId);
-                SendToAppD(json, this.metricsurl);
-            }
-            else
-            {
-                eventLog1.WriteEntry(output, EventLogEntryType.Error, eventId);
-                // Send the error to appdynamics
-                json = "[  { \"eventSeverity\": \"ERROR\", \"type\": \"DFS_Replication\", \"summaryMessage\": \"" + output + "\", \"properties\": { \"Server\": {" + "\"" + thishost + "\" }, \"RGroup\": { \"" + rgname + "\" }, \"Folder\": { \"" + rfname + "\" } }, \"details\": { \"Error\": \"" + output + "\", \"Server\": \"" + thishost + "\", \"RGroup\": \"" + rgname + "\", \"Folder\": \"" + rfname + "\"}  }]";
-                SendToAppD(json, this.eventsurl);
 
-            }
+        }
+
+        private string RetrieveBacklog(Process p, string folder)
+        {
+            string output;
+            p.StartInfo.FileName = @"c:\Windows\system32\dfsrdiag.exe";
+            p.StartInfo.Arguments = "backlog /RGName:" + this.rgname + " /RFName:" + folder + " /ReceivingMember:" + this.recmember + " /SendingMember:" + this.sendmember;
+            p.StartInfo.UseShellExecute = false;
+            p.StartInfo.RedirectStandardOutput = true;
+            p.StartInfo.WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden;
+            p.StartInfo.CreateNoWindow = true;
+            p.Start();
+            p.WaitForExit(this.pTimeOut);
+            output = p.StandardOutput.ReadToEnd();
+            return output;
         }
 
         private void SendToAppD(string json, string url)

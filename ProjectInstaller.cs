@@ -22,7 +22,29 @@ namespace DFSRBacklogMonitoring
         protected override void OnBeforeInstall(IDictionary savedState)
         {
             Context.Parameters["assemblypath"] = "\"" + Context.Parameters["assemblypath"] + "\"";
+            SetServiceName();
             base.OnBeforeInstall(savedState);
+        }
+        protected override void OnBeforeUninstall(IDictionary savedState)
+        {
+            SetServiceName();
+            base.OnBeforeUninstall(savedState);
+        }
+        private void DSFRBacklogMonitoringInstaller_AfterInstall(object sender, InstallEventArgs e)
+        {
+
+        }
+        private void SetServiceName()
+        {
+            if (Context.Parameters.ContainsKey("ServiceName"))
+            {
+                DSFRBacklogMonitoringInstaller.ServiceName = Context.Parameters["ServiceName"];
+            }
+
+            if (Context.Parameters.ContainsKey("DisplayName"))
+            {
+                DSFRBacklogMonitoringInstaller.DisplayName = Context.Parameters["DisplayName"];
+            }
         }
     }
 }

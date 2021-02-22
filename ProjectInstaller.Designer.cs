@@ -43,8 +43,9 @@
             this.DSFRBacklogMonitoringInstaller.Description = "Service to monitor current DFS replication backlog. It connects to AppD Machine A" +
     "gent on localhost:9999";
             this.DSFRBacklogMonitoringInstaller.DisplayName = "AppD DSFRBacklogMonitoring";
-            this.DSFRBacklogMonitoringInstaller.ServiceName = "DSFRBacklogMonitoring";
+            this.DSFRBacklogMonitoringInstaller.ServiceName = "AppD DSFRBacklogMonitoring";
             this.DSFRBacklogMonitoringInstaller.StartType = System.ServiceProcess.ServiceStartMode.Automatic;
+            this.DSFRBacklogMonitoringInstaller.AfterInstall += new System.Configuration.Install.InstallEventHandler(this.DSFRBacklogMonitoringInstaller_AfterInstall);
             // 
             // ProjectInstaller
             // 

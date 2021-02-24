@@ -150,12 +150,12 @@ namespace DFSRBacklogMonitoring
                     {
                         // Send the backlog count to appdynamics
                         json = "[  {    \"metricName\": \"Custom Metrics|DFSR Backlog|" + folder + "|" + thishost + "\",  \"aggregatorType\": \"OBSERVATION\", \"value\":" + backlog + "} ]";
-                        eventLog1.WriteEntry("Process iD: " + this.pPid + "JSON: " + json, EventLogEntryType.Information, 100);
+                        eventLog1.WriteEntry("Process ID: " + this.pPid + " JSON: " + json, EventLogEntryType.Information, 100);
                         SendToAppD(json, this.metricsurl);
                     }
                     else
                     {
-                        eventLog1.WriteEntry("Process iD: " + this.pPid + "Output: " + output, EventLogEntryType.Error, 200);
+                        eventLog1.WriteEntry("Process ID: " + this.pPid + " Output: " + output, EventLogEntryType.Error, 200);
                         // Send the error to appdynamics
                         output = Regex.Replace(output, @"\t|\n|\r", "");
                         json = "[  { \"eventSeverity\": \"ERROR\", \"type\": \"DFS_Replication\", \"summaryMessage\": \"" + output + "\", \"properties\": { \"Server\": \"" + thishost + "\", \"RGroup\": \"" + rgname + "\" , \"Folder\": \"" + folder + "\" }, \"details\": { \"Error\": \"" + output + "\", \"Server\": \"" + thishost + "\", \"RGroup\": \"" + rgname + "\", \"Folder\": \"" + folder + "\"}  }]";
@@ -201,7 +201,7 @@ namespace DFSRBacklogMonitoring
 
         private void SendToAppD(string json, string url)
         {
-            eventLog1.WriteEntry("Sending to AppD;;" + json + ";;" + url, EventLogEntryType.Information, 150);
+            eventLog1.WriteEntry("Sending to AppD JSON: " + json + " URL: " + url, EventLogEntryType.Information, 150);
             try
             {
                 var httpWebRequest = (HttpWebRequest)WebRequest.Create(url);

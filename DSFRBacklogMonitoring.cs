@@ -11,6 +11,7 @@ using System.Runtime.InteropServices;
 using System.ServiceProcess;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using System.Timers;
 using static System.Net.Mime.MediaTypeNames;
 
@@ -102,24 +103,27 @@ namespace DFSRBacklogMonitoring
             SetServiceStatus(this.ServiceHandle, ref serviceStatus);
         }
 
-        private void OnTimer(object sender, ElapsedEventArgs e)
+        private async void OnTimer(object sender, ElapsedEventArgs e)
         {
-            eventLog1.WriteEntry("StartingMonitoring the System", EventLogEntryType.Information, eventId);
-
-            string output = "";
-            int backlog = 0;
-            bool error = false;
+            eventLog1.WriteEntry("StartingMonitoring the System", EventLogEntryType.Information, 50);
             string json = "";
-            Process p;
-            p = new Process();
             try
             {
                 foreach (string folder in rfnames)
                 {
-                    output = RetrieveBacklog(p, folder);
-                    if (output != "")
+                    string stdOutput = "";
+                    string stdError = "";
+                    int backlog = 0;
+                    bool error = false;
+                    string arguments = "backlog /RGName:" + this.rgname + " /RFName:" + folder + " /ReceivingMember:" + this.recmember + " /SendingMember:" + this.sendmember;
+                    DfsrBacklogProcess p = new DfsrBacklogProcess();
+                    await p.RetrieveBacklog(arguments, this.pTimeOut);
+                    stdOutput = p.stdOutput;
+                    stdError = p.stdError;
+
+                    if (stdOutput != "")
                     {
-                        string[] outputlst = output.Split('\n');
+                        string[] outputlst = stdOutput.Split('\n');
                         foreach (string line in outputlst)
                         {
                             if (line.Contains("Backlog File Count"))
@@ -153,10 +157,10 @@ namespace DFSRBacklogMonitoring
                     }
                     else
                     {
-                        eventLog1.WriteEntry(output, EventLogEntryType.Error, eventId);
+                        eventLog1.WriteEntry(stdOutput, EventLogEntryType.Error, 200);
                         // Send the error to appdynamics
-                        output = Regex.Replace(output, @"\t|\n|\r", "");
-                        json = "[  { \"eventSeverity\": \"ERROR\", \"type\": \"DFS_Replication\", \"summaryMessage\": \"" + output + "\", \"properties\": { \"Server\": \"" + thishost + "\", \"RGroup\": \"" + rgname + "\" , \"Folder\": \"" + folder + "\" }, \"details\": { \"Error\": \"" + output + "\", \"Server\": \"" + thishost + "\", \"RGroup\": \"" + rgname + "\", \"Folder\": \"" + folder + "\"}  }]";
+                        stdOutput = Regex.Replace(stdOutput, @"\t|\n|\r", "");
+                        json = "[  { \"eventSeverity\": \"ERROR\", \"type\": \"DFS_Replication\", \"summaryMessage\": \"" + stdOutput + "\", \"properties\": { \"Server\": \"" + thishost + "\", \"RGroup\": \"" + rgname + "\" , \"Folder\": \"" + folder + "\" }, \"details\": { \"Error\": \"" + stdOutput + "\", \"Server\": \"" + thishost + "\", \"RGroup\": \"" + rgname + "\", \"Folder\": \"" + folder + "\"}  }]";
                         SendToAppD(json, this.eventsurl);
 
                     }
@@ -165,36 +169,14 @@ namespace DFSRBacklogMonitoring
             }
             catch (Exception ex)
             {
-                eventLog1.WriteEntry(ex.ToString(), EventLogEntryType.Error, eventId);
+                eventLog1.WriteEntry(ex.ToString(), EventLogEntryType.Error, 200);
                 string expt = Regex.Replace(ex.ToString(), @"\t|\n|\r", "");
                 json = "[  { \"eventSeverity\": \"ERROR\", \"type\": \"DFS_Replication\", \"summaryMessage\": \"" + expt + "\", \"properties\": { \"Server\": \"" + thishost + "\", \"RGroup\": \"" + rgname + "\" , \"Folder\": \"" + rfnames + "\" }, \"details\": { \"Error\": \"" + expt + "\", \"Server\": \"" + thishost + "\", \"RGroup\": \"" + rgname + "\", \"Folder\": \"" + rfnames + "\"}  }]"; 
                 SendToAppD(json, this.eventsurl);
             }
-            finally
-            {
-                if (!p.HasExited)
-                {
-                    p.Close();
-                }
-            }
-
 
         }
 
-        private string RetrieveBacklog(Process p, string folder)
-        {
-            string output;
-            p.StartInfo.FileName = @"c:\Windows\system32\dfsrdiag.exe";
-            p.StartInfo.Arguments = "backlog /RGName:" + this.rgname + " /RFName:" + folder + " /ReceivingMember:" + this.recmember + " /SendingMember:" + this.sendmember;
-            p.StartInfo.UseShellExecute = false;
-            p.StartInfo.RedirectStandardOutput = true;
-            p.StartInfo.WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden;
-            p.StartInfo.CreateNoWindow = true;
-            p.Start();
-            p.WaitForExit(this.pTimeOut);
-            output = p.StandardOutput.ReadToEnd();
-            return output;
-        }
 
         private void SendToAppD(string json, string url)
         {
@@ -219,7 +201,7 @@ namespace DFSRBacklogMonitoring
             }
             catch (Exception ex)
             {
-                eventLog1.WriteEntry(ex.ToString() + '\n' + url + '\n' + json, EventLogEntryType.Error, eventId);
+                eventLog1.WriteEntry(ex.ToString() + '\n' + url + '\n' + json, EventLogEntryType.Error, 200);
             }
         }
 
@@ -237,7 +219,7 @@ namespace DFSRBacklogMonitoring
         }
         protected override void OnContinue()
         {
-            eventLog1.WriteEntry("In OnContinue.", EventLogEntryType.Information, 200);
+            eventLog1.WriteEntry("In OnContinue.", EventLogEntryType.Information, 150);
         }
         public enum ServiceState
         {
